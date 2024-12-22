@@ -4,13 +4,15 @@ import math
 from WhiteShark import WhiteShark
 
 class WhiteSharkOptimizer:
-    def __init__(self, fitness_function: Callable[[np.ndarray], float],
+    def __init__(self, 
+                       fitness_function: Callable[[np.ndarray], float],
                        search_space: list[tuple[float, float]], 
                        population_size: int,
                        max_iterations: int,
                        a0: float,
                        a1: float, 
                        a2: float,
+                       minimize: bool = True,
                        f_min: float = 0.07,
                        f_max: float = 0.75,
                        p_min: float = 0.5,
@@ -27,21 +29,24 @@ class WhiteSharkOptimizer:
         :param a0:               controls exploration.
         :param a1:               controls exploitation.
         :param a2:               a positive constant utilized to control exploration and exploitation behaviors.
+        :param minimize:         indicates whether to minimize fitness function or maximize.
         :param f_min:            min frequencies of the undulating motions.
         :param f_max:            max frequencies of the undulating motions.
         :param p_min:            controls the velocity updates and help maintain a stable balance between global and local search.
         :param p_max:            controls the velocity updates and help maintain a stable balance between global and local search.
         :param t:                an acceleration coefficient that influences the algorithm's behavior.
         """
-        self.objective_function = fitness_function
-        self.search_space =       search_space
-        self.population_size =    population_size
-        self.max_iterations =     max_iterations
+        self.fitness_function = fitness_function
+        self.search_space =     search_space
+        self.population_size =  population_size
+        self.max_iterations =   max_iterations
         self.t = t
-        self.p_min = p_min
-        self.p_max = p_max
+
+        self.minimize = minimize
         self.f_min = f_min
         self.f_max = f_max
+        self.p_min = p_min
+        self.p_max = p_max
         self.a0 = a0
         self.a1 = a1
         self.a2 = a2
@@ -53,6 +58,7 @@ class WhiteSharkOptimizer:
         self.upper_bounds = np.array([b[1] for b in search_space])
         self.f = self._get_f()    # Velocity scaling factor.
 
+        self.optimize_result_history = None
         self.best_solution = None
         self.global_best_position = None
 
@@ -85,8 +91,8 @@ class WhiteSharkOptimizer:
         shark.velocity = self.mu * (
                 shark.velocity + 
                 self._get_p1(k) * (self.global_best_position - shark.position) * c1 +
-                self._get_p2(k) * (self.global_best_position - self.white_sharks[self._get_nu()].position) * c2 
-                # self._get_p2(k) * (self.global_best_position - shark.position) * c2 
+                # self._get_p2(k) * (self.global_best_position - self.white_sharks[self._get_nu()].position) * c2 
+                self._get_p2(k) * (self.global_best_position - shark.position) * c2 # NOTE: Shows better results in some tasks.
             )
 
     def _get_nu(self) -> int:
@@ -128,7 +134,6 @@ class WhiteSharkOptimizer:
         :param i: a shark index.
         :param k: an iteration number. 
         '''
-        # FIXME
         shark = self.white_sharks[i]
         # Exploration phase.
         if np.random.rand() < self._get_mv(k):
@@ -222,8 +227,14 @@ class WhiteSharkOptimizer:
     def _evaluate_population(self):
         ''' Evaluate fitness and find the best solution. Updates 'best_solution' and 'global_best_position'. '''
         positions = np.array([shark.position for shark in self.white_sharks])
-        fitness = np.apply_along_axis(self.objective_function, 1, positions)
-        best_index = np.argmin(fitness)
+        fitness = np.apply_along_axis(self.fitness_function, 1, positions)
+        
+        best_index = None
+        if self.minimize:
+            best_index = np.argmin(fitness)
+        else:
+            best_index = np.argmax(fitness)
+
         self.best_solution = fitness[best_index]
         self.global_best_position = positions[best_index].copy()
 
@@ -231,7 +242,7 @@ class WhiteSharkOptimizer:
         ''' Returns: (self.global_best_position, self.best_solution) '''
         self._initialize_population()
         self._evaluate_population()
-
+        self.optimize_result_history = []
         for k in range(self.max_iterations):
             for i in range(self.population_size):
                 self._update_velocity(i, k)
@@ -241,36 +252,6 @@ class WhiteSharkOptimizer:
                 self.white_sharks[i].adjust_position()
             
             self._evaluate_population()
-            print(f"Iteration {k+1}/{self.max_iterations} - Best Solution: {self.best_solution}")
+            self.optimize_result_history.append((self.global_best_position, self.best_solution))
 
         return self.global_best_position, self.best_solution
-
-
-# Example usage
-if __name__ == "__main__":
-    fitness_functions = [
-        lambda x: np.sum(x**2)
-    ]
-
-    search_space = [
-        (-20,20),
-        (-10,10),
-        (-0,5),
-        (0,3),
-        (-10,0),
-    ]
-
-    # Instantiate and run WSO
-    wso = WhiteSharkOptimizer(
-        fitness_function=fitness_functions[0],
-        search_space=search_space,
-        population_size=100,
-        max_iterations=1000,
-        a0=6.25,
-        a1=100,
-        a2=5e-4,
-    )
-
-    best_position, best_value = wso.optimize()
-    print(f"Optimal Position: {best_position}")
-    print(f"Optimal Value: {best_value}")
